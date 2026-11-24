@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0b1220">
+<title>PowerUp Pilote</title>
+<style>
+  :root { --bg:#0b1220; --card:#141d2f; --line:#263451; --txt:#e8eefc; --mute:#8b9ac0; --acc:#3d8bff; --ok:#2ecc71; --bad:#ff5468; --warn:#ffb020; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body { margin:0; background:var(--bg); color:var(--txt); font:15px/1.4 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; }
+  body { padding:16px; max-width:560px; margin:auto; user-select:none; -webkit-user-select:none; }
+  h1 { font-size:20px; margin:4px 0 12px; display:flex; align-items:center; gap:8px; }
+  .dot { width:10px; height:10px; border-radius:50%; background:var(--bad); }
+  .dot.on { background:var(--ok); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; margin-bottom:12px; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  button { font:inherit; border:0; border-radius:10px; padding:12px 16px; background:var(--acc); color:#fff; font-weight:600; cursor:pointer; }
+  button.sec { background:var(--line); }
+  button.stop { background:var(--bad); width:100%; font-size:20px; padding:18px; }
+  button:disabled { opacity:.4; }
+  .mute { color:var(--mute); font-size:13px; }
+  .big { font-size:28px; font-weight:700; font-variant-numeric:tabular-nums; }
+  .ctl { display:grid; grid-template-columns: 90px 1fr; gap:14px; align-items:stretch; }
+  /* throttle: vertical drag pad */
+  #thr { position:relative; height:260px; border-radius:12px; background:#0e1626; border:1px solid var(--line); touch-action:none; overflow:hidden; }
+  #thrFill { position:absolute; left:0; right:0; bottom:0; background:linear-gradient(to top,var(--acc),#7fb4ff); height:0; }
+  #thrLbl { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-weight:700; font-size:20px; mix-blend-mode:difference; }
+  #rud { position:relative; height:70px; border-radius:12px; background:#0e1626; border:1px solid var(--line); touch-action:none; }
+  #rudKnob { position:absolute; top:8px; bottom:8px; width:40px; margin-left:-20px; left:50%; border-radius:10px; background:var(--warn); }
+  #rud::after { content:""; position:absolute; left:50%; top:0; bottom:0; border-left:1px dashed var(--mute); }
+  label.sw { display:flex; gap:8px; align-items:center; }
+  input[type=checkbox] { width:20px; height:20px; }
+  details summary { cursor:pointer; color:var(--mute); }
+  pre#log { background:#070c16; border-radius:10px; padding:10px; font-size:12px; max-height:220px; overflow:auto; white-space:pre-wrap; margin:8px 0 0; user-select:text; }
+  .chr { font-family:ui-monospace,Consolas,monospace; font-size:12px; border-top:1px solid var(--line); padding:6px 0; }
+  .chr input { width:70px; background:#0e1626; color:var(--txt); border:1px solid var(--line); border-radius:6px; padding:4px; }
+  .chr button { padding:4px 10px; font-size:12px; }
+  .warnbox { background:#3a2a08; border:1px solid var(--warn); color:#ffe2a6; border-radius:10px; padding:10px; font-size:13px; display:none; }
+</style>
+</head>
+<body>
+<h1><span id="dot" class="dot"></span> PowerUp Pilote</h1>
+
+<div id="nobt" class="warnbox">Ce navigateur ne supporte pas le Web Bluetooth. Utilise <b>Chrome</b> (Android, Windows, Mac) ou l'app <b>Bluefy</b> sur iPhone. La page doit être ouverte en <b>https://</b> ou sur <b>localhost</b>.</div>
+
+<div class="card">
+  <div class="row">
+    <button id="btnConn">Connecter l'avion</button>
+    <button id="btnAll" class="sec">Voir tous les appareils</button>
+    <button id="btnDisc" class="sec" disabled>Déconnecter</button>
+  </div>
+  <div class="row" style="margin-top:10px; justify-content:space-between">
+    <div><div class="mute">Appareil</div><div id="devName">—</div></div>
+    <div style="text-align:right"><div class="mute">Batterie</div><div id="batt" class="big">—</div></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="ctl">
+    <div>
+      <div class="mute" style="margin-bottom:6px">Moteur</div>
+      <div id="thr"><div id="thrFill"></div><div id="thrLbl">0%</div></div>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:12px">
+      <div>
+        <div class="mute" style="margin-bottom:6px">Gouvernail <span id="rudVal">0</span></div>
+        <div id="rud"><div id="rudKnob"></div></div>
+      </div>
+      <label class="sw"><input type="checkbox" id="tilt"> Diriger en inclinant le téléphone</label>
+      <label class="sw"><input type="checkbox" id="invert"> Inverser gauche / droite</label>
+      <label class="sw">Gain gouvernail <input type="range" id="gain" min="20" max="100" value="100" style="flex:1"></label>
+      <label class="sw">Moteur max <input type="range" id="tmax" min="20" max="100" value="100" style="flex:1"> <span id="tmaxV">100%</span></label>
+    </div>
+  </div>
+  <div style="margin-top:14px"><button id="btnStop" class="stop">STOP MOTEUR</button></div>
+</div>
+
+<div class="card">
+  <details id="adv">
+    <summary>Mode avancé : explorer les caractéristiques Bluetooth</summary>
+    <p class="mute">Si le moteur ne réagit pas, ton modèle utilise peut‑être d'autres identifiants. Ici tu vois tout ce que l'avion expose et tu peux écrire un octet (0‑255) dans chaque caractéristique pour trouver laquelle fait tourner l'hélice.</p>
+    <div id="chars" class="mute">Connecte l'avion d'abord.</div>
+  </details>
+  <pre id="log"></pre>
+</div>
+
+<script>
+// ---- Protocole PowerUp (rétro-ingénierie communautaire, pypowerup / micropython) ----
+const SVC_POWERUP = '86c3810e-f171-40d9-a117-26b300768cd6';
+const SVC_BATTERY = 'battery_service';
+const C = {
+  speed:     '86c3810e-0010-40d9-a117-26b300768cd6', // uint8 0..254
+  rudder2:   '86c3810e-0021-40d9-a117-26b300768cd6', // int8 -128..127
+  rudder:    '86c3810e-0020-40d9-a117-26b300768cd6',
+  charging:  '86c3810e-0040-40d9-a117-26b300768cd6',
+  battLevel: '00002a19-0000-1000-8000-00805f9b34fb',
+};
+// Services "devinés" pour que Chrome nous laisse y accéder (Web Bluetooth exige la liste).
+const OPTIONAL = [SVC_POWERUP, SVC_BATTERY, 'device_information', 'generic_access',
+  ...['0000','0001','0010','0020','0030','0040','0050','0060','0070','f170','f172','f173','f174','f175']
+     .map(x => `86c3810e-${x}-40d9-a117-26b300768cd6`)];
+
+const $ = id => document.getElementById(id);
+const log = (...a) => { const l=$('log'); l.textContent += a.join(' ') + '\n'; l.scrollTop = l.scrollHeight; console.log(...a); };
+
+let device=null, chars={}, allChars=[];
+let throttle=0, rudder=0;          // throttle 0..1, rudder -1..1
+let lastSent={s:-1,r:999}, lastTime=0, busy=false;
+
+if (!navigator.bluetooth) { $('nobt').style.display='block'; $('btnConn').disabled=true; }
+
+// ---------- Connexion ----------
+async function pick(all) {
+  try {
+    if (navigator.bluetooth.getAvailability && !(await navigator.bluetooth.getAvailability()))
+      return log('Bluetooth indisponible : active le Bluetooth de l\'appareil.');
+    log(all ? 'Recherche de TOUS les appareils…' : 'Recherche de l\'avion…');
+    device = await navigator.bluetooth.requestDevice(all
+      ? {acceptAllDevices:true, optionalServices:OPTIONAL}
+      : {filters: [{namePrefix:'TailorToys'},{namePrefix:'PowerUp'},{namePrefix:'POWERUP'},{namePrefix:'Power'},{namePrefix:'Dart'},{services:[SVC_POWERUP]}],
+         optionalServices: OPTIONAL});
+    device.addEventListener('gattserverdisconnected', onDisconnected);
+    await connectGatt();
+  } catch (e) {
+    log('Erreur :', e.message);
+    if (/cancel/i.test(e.message)) log('→ La fenêtre de choix a été fermée sans sélection. Si l\'avion n\'y apparaissait pas, essaie « Voir tous les appareils ».');
+  }
+}
+$('btnConn').onclick = () => pick(false);
+$('btnAll').onclick = () => pick(true);
+
+async function connectGatt() {
+  log('Connexion à', device.name || device.id, '…');
+  const server = await device.gatt.connect();
+  chars = {}; allChars = [];
+  const services = await server.getPrimaryServices();
+  for (const s of services) {
+    let cs = [];
+    try { cs = await s.getCharacteristics(); } catch {}
+    log('Service', s.uuid, `(${cs.length} caractéristiques)`);
+    for (const c of cs) {
+      const p = c.properties;
+      const flags = ['read','write','writeWithoutResponse','notify'].filter(k=>p[k]).join(',');
+      log('   ', c.uuid, flags);
+      allChars.push(c);
+      for (const [k,u] of Object.entries(C)) if (c.uuid === u) chars[k] = c;
+    }
+  }
+  $('dot').classList.add('on');
+  $('devName').textContent = device.name || '(sans nom)';
+  $('btnDisc').disabled = false;
+  log(chars.speed ? '✔ Moteur trouvé' : '✘ Caractéristique moteur introuvable — voir le mode avancé');
+  log(chars.rudder2||chars.rudder ? '✔ Gouvernail trouvé' : '✘ Gouvernail introuvable');
+  renderExplorer();
+  setupBattery();
+  lastSent = {s:-1, r:999};
+}
+
+async function setupBattery() {
+  const b = chars.battLevel; if (!b) return;
+  try { const v = await b.readValue(); $('batt').textContent = v.getUint8(0) + '%'; } catch {}
+  try {
+    await b.startNotifications();
+    b.addEventListener('characteristicvaluechanged', e => $('batt').textContent = e.target.value.getUint8(0) + '%');
+  } catch {}
+}
+
+function onDisconnected() {
+  $('dot').classList.remove('on');
+  log('Déconnecté.');
+  setThrottle(0);
+  // Reconnexion automatique (une tentative)
+  if (device && !manualDisc) setTimeout(() => connectGatt().catch(e => log('Reconnexion échouée :', e.message)), 800);
+}
+let manualDisc=false;
+$('btnDisc').onclick = async () => {
+  manualDisc = true; setThrottle(0); await flush(true);
+  device?.gatt.disconnect(); $('btnDisc').disabled = true; manualDisc = false;
+};
+
+// ---------- Envoi des commandes ----------
+async function write(c, byte) {
+  const data = new Uint8Array([byte & 0xff]);
+  if (c.properties.writeWithoutResponse && c.writeValueWithoutResponse) return c.writeValueWithoutResponse(data);
+  return c.writeValueWithResponse ? c.writeValueWithResponse(data) : c.writeValue(data);
+}
+
+async function flush(force=false) {
+  if (busy || !device?.gatt.connected) return;
+  const tmax = $('tmax').value/100;
+  const s = Math.round(throttle * tmax * 254);
+  const r = Math.max(-128, Math.min(127, Math.round(rudder * ($('gain').value/100) * ($('invert').checked?-1:1) * 127)));
+  const now = performance.now();
+  const keepAlive = now - lastTime > 500;      // renvoie périodiquement, au cas où
+  busy = true;
+  try {
+    if (chars.speed && (force || keepAlive || s !== lastSent.s)) { await write(chars.speed, s); lastSent.s = s; }
+    const rc = chars.rudder2 || chars.rudder;
+    if (rc && (force || keepAlive || r !== lastSent.r)) { await write(rc, r); lastSent.r = r; }
+    lastTime = now;
+  } catch (e) { log('Écriture :', e.message); }
+  busy = false;
+}
+setInterval(flush, 50);
+
+// ---------- UI : moteur ----------
+function setThrottle(v) {
+  throttle = Math.max(0, Math.min(1, v));
+  $('thrFill').style.height = (throttle*100)+'%';
+  $('thrLbl').textContent = Math.round(throttle*100)+'%';
+}
+(() => {
+  const el = $('thr');
+  const upd = e => { const r = el.getBoundingClientRect(); setThrottle(1 - (e.clientY - r.top)/r.height); };
+  el.addEventListener('pointerdown', e => { el.setPointerCapture(e.pointerId); upd(e); });
+  el.addEventListener('pointermove', e => { if (e.buttons || e.pointerType==='touch') if (el.hasPointerCapture(e.pointerId)) upd(e); });
+})();
+$('btnStop').onclick = () => { setThrottle(0); flush(true); };
+$('tmax').oninput = () => $('tmaxV').textContent = $('tmax').value + '%';
+
+// ---------- UI : gouvernail ----------
+function setRudder(v) {
+  rudder = Math.max(-1, Math.min(1, v));
+  $('rudKnob').style.left = (50 + rudder*45)+'%';
+  $('rudVal').textContent = Math.round(rudder*100);
+}
+(() => {
+  const el = $('rud');
+  const upd = e => { const r = el.getBoundingClientRect(); setRudder(((e.clientX - r.left)/r.width)*2 - 1); };
+  el.addEventListener('pointerdown', e => { el.setPointerCapture(e.pointerId); upd(e); });
+  el.addEventListener('pointermove', e => { if (el.hasPointerCapture(e.pointerId)) upd(e); });
+  const center = () => { if (!$('tilt').checked) setRudder(0); };
+  el.addEventListener('pointerup', center); el.addEventListener('pointercancel', center);
+})();
+
+// Inclinaison du téléphone (comme l'app originale)
+$('tilt').onchange = async e => {
+  if (e.target.checked && typeof DeviceOrientationEvent?.requestPermission === 'function') {
+    try { if (await DeviceOrientationEvent.requestPermission() !== 'granted') e.target.checked = false; } catch { e.target.checked = false; }
+  }
+  if (!e.target.checked) setRudder(0);
+};
+window.addEventListener('deviceorientation', e => {
+  if (!$('tilt').checked || e.gamma == null) return;
+  const landscape = (screen.orientation?.angle ?? window.orientation ?? 0) % 180 !== 0;
+  let tiltDeg = landscape ? e.beta : e.gamma;
+  if ((screen.orientation?.angle ?? window.orientation) === 270 || window.orientation === -90) tiltDeg = -tiltDeg;
+  setRudder(tiltDeg / 35);   // ±35° = braquage max
+});
+
+// Sécurité : couper le moteur si la page passe en arrière-plan
+document.addEventListener('visibilitychange', () => { if (document.hidden) { setThrottle(0); flush(true); } });
+
+// ---------- Mode avancé ----------
+function renderExplorer() {
+  const box = $('chars'); box.innerHTML = '';
+  if (!allChars.length) { box.textContent = 'Aucune caractéristique accessible.'; return; }
+  for (const c of allChars) {
+    const d = document.createElement('div'); d.className = 'chr';
+    const known = Object.entries(C).find(([,u]) => u === c.uuid)?.[0];
+    d.innerHTML = `<div>${c.uuid}${known?` <b>(${known})</b>`:''}</div>`;
+    const row = document.createElement('div'); row.className='row';
+    if (c.properties.read) {
+      const b = document.createElement('button'); b.textContent='Lire'; b.className='sec';
+      b.onclick = async () => { try { const v = await c.readValue(); log(c.uuid.slice(4,8), '=', [...new Uint8Array(v.buffer)].join(' ')); } catch(e){ log(e.message); } };
+      row.append(b);
+    }
+    if (c.properties.write || c.properties.writeWithoutResponse) {
+      const i = document.createElement('input'); i.type='number'; i.min=0; i.max=255; i.value=60;
+      const b = document.createElement('button'); b.textContent='Écrire';
+      b.onclick = async () => { try { await write(c, +i.value); log('écrit', i.value, '→', c.uuid.slice(4,8)); } catch(e){ log(e.message); } };
+      const z = document.createElement('button'); z.textContent='0'; z.className='sec';
+      z.onclick = async () => { try { await write(c, 0); } catch(e){ log(e.message); } };
+      const use = document.createElement('button'); use.textContent='= moteur'; use.className='sec';
+      use.onclick = () => { chars.speed = c; log('Moteur ←', c.uuid); };
+      const useR = document.createElement('button'); useR.textContent='= gouvernail'; useR.className='sec';
+      useR.onclick = () => { chars.rudder2 = c; log('Gouvernail ←', c.uuid); };
+      row.append(i, b, z, use, useR);
+    }
+    d.append(row); box.append(d);
+  }
+}
+
+setThrottle(0); setRudder(0);
+log('Prêt. Allume l\'avion puis clique « Connecter ».');
+</script>
+</body>
+</html>
