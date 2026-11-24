@@ -144,7 +144,7 @@ async function connectGatt() {
       const flags = ['read','write','writeWithoutResponse','notify'].filter(k=>p[k]).join(',');
       log('   ', c.uuid, flags);
       allChars.push(c);
-      for (const [k,u] of Object.entries(C)) if (c.uuid === u) chars[k] = c;
+      for (const [k,u] of Object.entries(C)) if (c.uuid.toLowerCase() === u) chars[k] = c;
     }
   }
   $('dot').classList.add('on');
@@ -258,7 +258,7 @@ function renderExplorer() {
   if (!allChars.length) { box.textContent = 'Aucune caractéristique accessible.'; return; }
   for (const c of allChars) {
     const d = document.createElement('div'); d.className = 'chr';
-    const known = Object.entries(C).find(([,u]) => u === c.uuid)?.[0];
+    const known = Object.entries(C).find(([,u]) => u === c.uuid.toLowerCase())?.[0];
     d.innerHTML = `<div>${c.uuid}${known?` <b>(${known})</b>`:''}</div>`;
     const row = document.createElement('div'); row.className='row';
     if (c.properties.read) {
